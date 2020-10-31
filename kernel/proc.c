@@ -21,27 +21,19 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+extern char etext[]; // kernel.ld sets this to end of kernel code.
+
 // initialize the proc table at boot time.
 void
-procinit(void)
+procinit(void) // initialize a proc pool?
 {
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");
-  for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
-  }
-  kvminithart();
+  for(p = proc; p < &proc[NPROC]; p++) 
+    initlock(&p->lock, "proc");
+  
+  kvminithart(); // for unnecessary safety?
 }
 
 // Must be called with interrupts disabled,
@@ -107,6 +99,23 @@ allocproc(void)
 found:
   p->pid = allocpid();
 
+  p->kpagetable = kvminit_minic(p);
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  // Allocate a page for the process's kernel stack.
+  // Map it high in memory, followed by an invalid
+  // guard page.
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("alloproc");
+  uint64 va = KSTACK(0);
+  uvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
@@ -139,8 +148,16 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+  if (p->kpagetable)
+    proc_freekpagetable(p->kpagetable);
+  
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  
+  p->kpagetable = 0;
+  p->kstack = 0;
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -183,6 +200,40 @@ proc_pagetable(struct proc *p)
   }
 
   return pagetable;
+}
+
+void 
+proc_freekpagetable(pagetable_t pagetable) {
+  // uart registers
+  uvmunmap(pagetable, UART0, 1, 0);//i
+
+  // virtio mmio disk interface
+  uvmunmap(pagetable, VIRTIO0, 1, 0);//i
+
+  // CLINT
+  uvmunmap(pagetable, CLINT, 16, 0);//i, = 16 pgsize
+
+  // PLIC
+  uvmunmap(pagetable, PLIC, 1024, 0);//i, 2**10=1024 pgsize
+
+  /* 
+   * DRAM address space [KERNBASE...PHYSTOP) = 128MiB
+  */
+  // map kernel text executable and read-only.
+  uvmunmap(pagetable, KERNBASE, ((uint64)etext - KERNBASE)/PGSIZE, 0);
+
+  // map kernel data and the physical RAM we'll make use of.
+  // uvmmap(p, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R | PTE_W);
+
+  /*
+   * what is this for?
+   */
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+
+  //free kernel stack
+  uvmunmap(pagetable, KSTACK(0), 1, 0);
 }
 
 // Free a process's page table, and free the
@@ -473,6 +524,10 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -483,6 +538,9 @@ scheduler(void)
       }
       release(&p->lock);
     }
+    if (!found)
+      kvminithart();
+
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();
