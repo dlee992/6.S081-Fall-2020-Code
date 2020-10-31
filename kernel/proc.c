@@ -99,6 +99,20 @@ allocproc(void)
 found:
   p->pid = allocpid();
 
+  // Allocate a trapframe page.
+  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+    return 0;
+  }
+
+  // An empty user page table.
+  p->pagetable = proc_pagetable(p);
+  if(p->pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   p->kpagetable = kvminit_minic(p);
   if(p->kpagetable == 0){
     freeproc(p);
@@ -113,22 +127,8 @@ found:
   if(pa == 0)
     panic("alloproc");
   uint64 va = KSTACK(0);
-  uvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  uvmmap(p, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   p->kstack = va;
-
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-    release(&p->lock);
-    return 0;
-  }
-
-  // An empty user page table.
-  p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
