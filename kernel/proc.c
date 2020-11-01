@@ -113,7 +113,9 @@ found:
     return 0;
   }
 
-  p->kpagetable = kvminit_minic(p);
+  printf("xv6 kernel: enter to kvminit_minic\n");
+  p->kpagetable = kvminit_minic();
+  printf("xv6 kernel: out of kvminit_minic\n");
   if(p->kpagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -127,7 +129,7 @@ found:
   if(pa == 0)
     panic("alloproc");
   uint64 va = KSTACK(0);
-  uvmmap(p, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  uvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   p->kstack = va;
 
   // Set up new context to start executing at forkret,
@@ -216,18 +218,12 @@ proc_freekpagetable(pagetable_t pagetable) {
   // PLIC
   uvmunmap(pagetable, PLIC, 1024, 0);//i, 2**10=1024 pgsize
 
-  /* 
-   * DRAM address space [KERNBASE...PHYSTOP) = 128MiB
-  */
   // map kernel text executable and read-only.
   uvmunmap(pagetable, KERNBASE, ((uint64)etext - KERNBASE)/PGSIZE, 0);
 
   // map kernel data and the physical RAM we'll make use of.
-  // uvmmap(p, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R | PTE_W);
+  uvmunmap(pagetable, (uint64)etext, PHYSTOP - (uint64)etext, 0);
 
-  /*
-   * what is this for?
-   */
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -264,7 +260,9 @@ userinit(void)
 {
   struct proc *p;
 
+  printf("xv6 kernel: enter to allocproc\n");
   p = allocproc();
+  printf("xv6 kernel: out of allocproc\n");
   initproc = p;
   
   // allocate one user page and copy init's instructions
@@ -525,8 +523,9 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
 
-        w_satp(MAKE_SATP(p->kpagetable));
-        sfence_vma();
+        // w_satp(MAKE_SATP(p->kpagetable));
+        // sfence_vma();
+        kvminithart();
 
         swtch(&c->context, &p->context);
 
@@ -538,7 +537,7 @@ scheduler(void)
       }
       release(&p->lock);
     }
-    if (!found)
+    if (found == 0)
       kvminithart();
 
 #if !defined (LAB_FS)

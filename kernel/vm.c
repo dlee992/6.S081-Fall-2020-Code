@@ -34,13 +34,15 @@ void kvminit()
   // virtio mmio disk interface
   kvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);//i
 
+  // vmprint(kernel_pagetable, 1);
+
   // CLINT
   kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);//i, = 16 pgsize
 
   // PLIC
   kvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W);//i, 2**10=1024 pgsize
 
-
+  
   /* 
    * DRAM address space [KERNBASE...PHYSTOP) = 128MiB
   */
@@ -56,47 +58,53 @@ void kvminit()
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  // vmprint(kernel_pagetable, 1);
 }
 
-pagetable_t kvminit_minic(struct proc * p) {
+pagetable_t kvminit_minic() {
   pagetable_t kpagetable = (pagetable_t)kalloc();
   memset(kpagetable, 0, PGSIZE);
 
+  printf("xv6 kernel: enter to map UART0\n");
   // uart registers
-  uvmmap(p, UART0, UART0, PGSIZE, PTE_R | PTE_W);//i
+  uvmmap(kpagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);//i
+  printf("xv6 kernel: out of map UART0\n");
 
   // virtio mmio disk interface
-  uvmmap(p, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);//i
+  uvmmap(kpagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);//i
 
   // CLINT
-  uvmmap(p, CLINT, CLINT, 0x10000, PTE_R | PTE_W);//i, = 16 pgsize
+  uvmmap(kpagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);//i, = 16 pgsize
 
   // PLIC
-  uvmmap(p, PLIC, PLIC, 0x400000, PTE_R | PTE_W);//i, 2**10=1024 pgsize
+  uvmmap(kpagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);//i, 2**10=1024 pgsize
 
   /* 
    * DRAM address space [KERNBASE...PHYSTOP) = 128MiB
   */
   // map kernel text executable and read-only.
-  uvmmap(p, KERNBASE, KERNBASE, (uint64)etext - KERNBASE, PTE_R | PTE_X);
+  uvmmap(kpagetable, KERNBASE, KERNBASE, (uint64)etext - KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
-  // uvmmap(p, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R | PTE_W);
+  uvmmap(kpagetable, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R | PTE_W);
 
   /*
    * what is this for?
    */
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  uvmmap(p, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  uvmmap(kpagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   return kpagetable;
 }
 
-void uvmmap(struct proc *p, uint64 va, uint64 pa, uint64 sz, int perm)
+void uvmmap(pagetable_t kpagetable, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if (mappages(p->kpagetable, va, sz, pa, perm) != 0)
+  // printf("xv6 kernel: enter to mappages\n");
+  if (mappages(kpagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
+  // printf("xv6 kernel: out of mappages\n");
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -187,10 +195,14 @@ kvmpa(uint64 va)
   uint64 pa;
 
   pte = walk(kernel_pagetable, va, 0);
-  if (pte == 0)
+  if (pte == 0) {
+    printf("pte is 0\n");
     panic("kvmpa");
-  if ((*pte & PTE_V) == 0)
+  }
+  if ((*pte & PTE_V) == 0) {
+    printf("pte is invalid\n");
     panic("kvmpa");
+  }
   pa = PTE2PA(*pte);
   return pa + off;
 }
@@ -208,8 +220,10 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   last = PGROUNDDOWN(va + size - 1);
   for (;;)
   {
+    // printf("walk begin\n");
     if ((pte = walk(pagetable, a, 1)) == 0)
       return -1;
+    // printf("walk end\n");
     if (*pte & PTE_V)
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;

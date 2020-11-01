@@ -22,9 +22,13 @@ main()
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
+    printf("xv6 kernel: kvminit and hart\n");
     procinit();      // process table
+    printf("xv6 kernel: procinit\n");
     trapinit();      // trap vectors
+    printf("xv6 kernel: trapinit\n");
     trapinithart();  // install kernel trap vector
+    printf("xv6 kernel: trapinithart\n");
     plicinit();      // set up interrupt controller
     plicinithart();  // ask PLIC for device interrupts
     binit();         // buffer cache
@@ -35,7 +39,9 @@ main()
     pci_init();
     sockinit();
 #endif    
+    printf("xv6 kernel: ready to userinit\n");
     userinit();      // first user process
+    printf("xv6 kernel: end of userinit\n");
     __sync_synchronize();
     started = 1;
   } else {
@@ -48,5 +54,6 @@ main()
     plicinithart();   // ask PLIC for device interrupts
   }
 
+  printf("xv6 kernel: ready to sched\n");
   scheduler();        
 }
