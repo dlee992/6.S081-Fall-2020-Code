@@ -113,9 +113,9 @@ found:
     return 0;
   }
 
-  printf("xv6 kernel: enter to kvminit_minic\n");
+  printf("[INFO]  enter to kvminit_minic\n");
   p->kpagetable = kvminit_minic();
-  printf("xv6 kernel: out of kvminit_minic\n");
+  printf("[INFO]  out of kvminit_minic\n");
   if(p->kpagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -260,9 +260,9 @@ userinit(void)
 {
   struct proc *p;
 
-  printf("xv6 kernel: enter to allocproc\n");
+  printf("[INFO]  enter to allocproc\n");
   p = allocproc();
-  printf("xv6 kernel: out of allocproc\n");
+  printf("[INFO]  out of allocproc\n");
   initproc = p;
   
   // allocate one user page and copy init's instructions
@@ -523,9 +523,9 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
 
-        // w_satp(MAKE_SATP(p->kpagetable));
-        // sfence_vma();
-        kvminithart();
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+        // kvminithart();
 
         swtch(&c->context, &p->context);
 

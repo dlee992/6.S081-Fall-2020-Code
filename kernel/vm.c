@@ -23,6 +23,7 @@ extern char trampoline[]; // trampoline.S
 void kvminit()
 {
   kernel_pagetable = (pagetable_t)kalloc();
+  printf("[INFO] kernel_pagetable address = %p\n", kernel_pagetable);
   memset(kernel_pagetable, 0, PGSIZE);
 
   /* 
@@ -64,12 +65,13 @@ void kvminit()
 
 pagetable_t kvminit_minic() {
   pagetable_t kpagetable = (pagetable_t)kalloc();
+  printf("[INFO] process's kernel pagetable address = %p\n", kpagetable);
   memset(kpagetable, 0, PGSIZE);
 
-  printf("xv6 kernel: enter to map UART0\n");
+  printf("[INFO]  enter to map UART0\n");
   // uart registers
   uvmmap(kpagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);//i
-  printf("xv6 kernel: out of map UART0\n");
+  printf("[INFO]  out of map UART0\n");
 
   // virtio mmio disk interface
   uvmmap(kpagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);//i
@@ -101,10 +103,10 @@ pagetable_t kvminit_minic() {
 
 void uvmmap(pagetable_t kpagetable, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  // printf("xv6 kernel: enter to mappages\n");
+  // printf("[INFO]  enter to mappages\n");
   if (mappages(kpagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
-  // printf("xv6 kernel: out of mappages\n");
+  // printf("[INFO]  out of mappages\n");
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -196,12 +198,11 @@ kvmpa(uint64 va)
 
   pte = walk(kernel_pagetable, va, 0);
   if (pte == 0) {
-    printf("pte is 0\n");
-    panic("kvmpa");
+    panic("kvmpa, PTE=0");
   }
   if ((*pte & PTE_V) == 0) {
-    printf("pte is invalid\n");
-    panic("kvmpa");
+    printf("va = %p, pte = %p, also invalid\n", va, pte);
+    panic("kvmpa, PTE invalid");
   }
   pa = PTE2PA(*pte);
   return pa + off;
