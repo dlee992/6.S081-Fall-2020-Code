@@ -30,8 +30,19 @@ procinit(void) // initialize a proc pool?
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");
-  for(p = proc; p < &proc[NPROC]; p++) 
+  for(p = proc; p < &proc[NPROC]; p++) {
     initlock(&p->lock, "proc");
+
+    // Allocate a page for the process's kernel stack.
+    // Map it high in memory, followed by an invalid
+    // guard page.
+    char *pa = kalloc();
+    if(pa == 0)
+      panic("kalloc");
+    uint64 va = KSTACK((int) (p - proc));
+    kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    p->kstack = va;
+  }
   
   kvminithart(); // for unnecessary safety?
 }
@@ -122,16 +133,9 @@ found:
     return 0;
   }
 
-  // Allocate a page for the process's kernel stack.
-  // Map it high in memory, followed by an invalid
-  // guard page.
-  char *pa = kalloc();
-  if(pa == 0)
-    panic("alloproc");
-  uint64 va = KSTACK(0);
-  uvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-  p->kstack = va;
-
+  // just map into process's kpagetable
+  uvmmap(p->kpagetable, p->kstack, (uint64)p->kstack, PGSIZE, PTE_R | PTE_W);
+  
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -523,9 +527,9 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
 
+        printf("[INFO] set process k-pagetable\n");
         w_satp(MAKE_SATP(p->kpagetable));
         sfence_vma();
-        // kvminithart();
 
         swtch(&c->context, &p->context);
 
