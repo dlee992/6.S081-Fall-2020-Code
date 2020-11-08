@@ -135,19 +135,17 @@ printfinit(void)
 }
 
 void backtrace(void) {
-  // printf("backtrace:\n");
+  printf("backtrace:\n");
   
   uint64 current_fp;
-  // current_fp = myproc()->trapframe->sp;
   current_fp = r_fp();
-  // uint64 return_address;
+  uint64 return_address;
   uint64 page_up = PGROUNDUP(current_fp);
-  // uint64 page_down = PGROUNDDOWN(current_fp);
   
   while (current_fp < page_up)
   {
-    // return_address = *(((uint64 *)current_fp) - 1);
-    // printf("%p\n", return_address);
+    return_address = *(((uint64 *)current_fp) - 1);
+    printf("%p\n", return_address);
     current_fp = *(((uint64 *)current_fp) - 2);
   }
 }
