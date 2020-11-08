@@ -68,6 +68,7 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
+    printf("which_dev = %d\n", which_dev);
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -77,8 +78,11 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2) {
+    p->already_ticks = p->already_ticks + 1;
+    // printf("pid=%d, already_ticks=%d\n", p->pid, p->already_ticks);
     yield();
+  }
 
   usertrapret();
 }
@@ -116,7 +120,52 @@ usertrapret(void)
   w_sstatus(x);
 
   // set S Exception Program Counter to the saved user pc.
-  w_sepc(p->trapframe->epc);
+  if (p->ticks != 0 && p->reentrant == 0 && p->ticks == p->already_ticks) {
+    p->already_ticks = 0;
+    p->reentrant = 1;
+
+    // save the user registers in normal code executing
+    p->copy_trapframe->kernel_satp = p->trapframe->kernel_satp;   // kernel page table
+    p->copy_trapframe->kernel_sp = p->trapframe->kernel_sp;     // top of process's kernel stack
+    p->copy_trapframe->kernel_trap = p->trapframe->kernel_trap;   // usertrap()
+    p->copy_trapframe->epc = p->trapframe->epc;           // saved user program counter
+    p->copy_trapframe->kernel_hartid = p->trapframe->kernel_hartid; // saved kernel tp
+    p->copy_trapframe->ra = p->trapframe->ra;
+    p->copy_trapframe->sp = p->trapframe->sp;
+    p->copy_trapframe->gp = p->trapframe->gp;
+    p->copy_trapframe->tp = p->trapframe->tp;
+    p->copy_trapframe->t0 = p->trapframe->t0;
+    p->copy_trapframe->t1 = p->trapframe->t1;
+    p->copy_trapframe->t2 = p->trapframe->t2;
+    p->copy_trapframe->s0 = p->trapframe->s0;
+    p->copy_trapframe->s1 = p->trapframe->s1;
+    p->copy_trapframe->a0 = p->trapframe->a0;
+    p->copy_trapframe->a1 = p->trapframe->a1;
+    p->copy_trapframe->a2 = p->trapframe->a2;
+    p->copy_trapframe->a3 = p->trapframe->a3;
+    p->copy_trapframe->a4 = p->trapframe->a4;
+    p->copy_trapframe->a5 = p->trapframe->a5;
+    p->copy_trapframe->a6 = p->trapframe->a6;
+    p->copy_trapframe->a7 = p->trapframe->a7;
+    p->copy_trapframe->s2 = p->trapframe->s2;
+    p->copy_trapframe->s3 = p->trapframe->s3;
+    p->copy_trapframe->s4 = p->trapframe->s4;
+    p->copy_trapframe->s5 = p->trapframe->s5;
+    p->copy_trapframe->s6 = p->trapframe->s6;
+    p->copy_trapframe->s7 = p->trapframe->s7;
+    p->copy_trapframe->s8 = p->trapframe->s8;
+    p->copy_trapframe->s9 = p->trapframe->s9;
+    p->copy_trapframe->s10 = p->trapframe->s10;
+    p->copy_trapframe->s11 = p->trapframe->s11;
+    p->copy_trapframe->t3 = p->trapframe->t3;
+    p->copy_trapframe->t4 = p->trapframe->t4;
+    p->copy_trapframe->t5 = p->trapframe->t5;
+    p->copy_trapframe->t6 = p->trapframe->t6;
+
+    w_sepc((uint64)p->handler);
+  }
+  else 
+    w_sepc(p->trapframe->epc);
 
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);

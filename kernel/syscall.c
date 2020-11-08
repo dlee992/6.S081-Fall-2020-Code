@@ -104,6 +104,8 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+uint64 sys_sigalarm(void);
+uint64 sys_sigreturn(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -127,6 +129,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_sigalarm]  sys_sigalarm,
+[SYS_sigreturn] sys_sigreturn
 };
 
 void
@@ -143,4 +147,61 @@ syscall(void)
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
+}
+
+uint64 sys_sigalarm(void) {
+  struct proc * p = myproc();
+
+  if(argint(0, &p->ticks) < 0)
+    return -1;
+  if (argint(1, (int*)&p->handler) < 0) 
+    return -1;
+  // printf("ticks=%d, handler=%d\n", p->ticks, p->handler);
+
+  return 0;
+}
+
+uint64 sys_sigreturn(void) {
+  struct proc * p = myproc();
+  p->reentrant = 0;
+
+  // copy back the user registers in normal code executing
+  p->trapframe->kernel_satp = p->copy_trapframe->kernel_satp;   // kernel page table
+  p->trapframe->kernel_sp = p->copy_trapframe->kernel_sp;     // top of process's kernel stack
+  p->trapframe->kernel_trap = p->copy_trapframe->kernel_trap;   // usertrap()
+  p->trapframe->epc = p->copy_trapframe->epc;           // saved user program counter
+  p->trapframe->kernel_hartid = p->copy_trapframe->kernel_hartid; // saved kernel tp
+  p->trapframe->ra = p->copy_trapframe->ra;
+  p->trapframe->sp = p->copy_trapframe->sp;
+  p->trapframe->gp = p->copy_trapframe->gp;
+  p->trapframe->tp = p->copy_trapframe->tp;
+  p->trapframe->t0 = p->copy_trapframe->t0;
+  p->trapframe->t1 = p->copy_trapframe->t1;
+  p->trapframe->t2 = p->copy_trapframe->t2;
+  p->trapframe->s0 = p->copy_trapframe->s0;
+  p->trapframe->s1 = p->copy_trapframe->s1;
+  p->trapframe->a0 = p->copy_trapframe->a0;
+  p->trapframe->a1 = p->copy_trapframe->a1;
+  p->trapframe->a2 = p->copy_trapframe->a2;
+  p->trapframe->a3 = p->copy_trapframe->a3;
+  p->trapframe->a4 = p->copy_trapframe->a4;
+  p->trapframe->a5 = p->copy_trapframe->a5;
+  p->trapframe->a6 = p->copy_trapframe->a6;
+  p->trapframe->a7 = p->copy_trapframe->a7;
+  p->trapframe->s2 = p->copy_trapframe->s2;
+  p->trapframe->s3 = p->copy_trapframe->s3;
+  p->trapframe->s4 = p->copy_trapframe->s4;
+  p->trapframe->s5 = p->copy_trapframe->s5;
+  p->trapframe->s6 = p->copy_trapframe->s6;
+  p->trapframe->s7 = p->copy_trapframe->s7;
+  p->trapframe->s8 = p->copy_trapframe->s8;
+  p->trapframe->s9 = p->copy_trapframe->s9;
+  p->trapframe->s10 = p->copy_trapframe->s10;
+  p->trapframe->s11 = p->copy_trapframe->s11;
+  p->trapframe->t3 = p->copy_trapframe->t3;
+  p->trapframe->t4 = p->copy_trapframe->t4;
+  p->trapframe->t5 = p->copy_trapframe->t5;
+  p->trapframe->t6 = p->copy_trapframe->t6;
+
+  return 0;
 }
