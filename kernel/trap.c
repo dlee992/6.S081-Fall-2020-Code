@@ -68,7 +68,7 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("which_dev = %d\n", which_dev);
+    // printf("which_dev = %d\n", which_dev);
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -125,11 +125,11 @@ usertrapret(void)
     p->reentrant = 1;
 
     // save the user registers in normal code executing
-    p->copy_trapframe->kernel_satp = p->trapframe->kernel_satp;   // kernel page table
-    p->copy_trapframe->kernel_sp = p->trapframe->kernel_sp;     // top of process's kernel stack
-    p->copy_trapframe->kernel_trap = p->trapframe->kernel_trap;   // usertrap()
+    // p->copy_trapframe->kernel_satp = p->trapframe->kernel_satp;   // kernel page table
+    // p->copy_trapframe->kernel_sp = p->trapframe->kernel_sp;     // top of process's kernel stack
+    // p->copy_trapframe->kernel_trap = p->trapframe->kernel_trap;   // usertrap()
     p->copy_trapframe->epc = p->trapframe->epc;           // saved user program counter
-    p->copy_trapframe->kernel_hartid = p->trapframe->kernel_hartid; // saved kernel tp
+    // p->copy_trapframe->kernel_hartid = p->trapframe->kernel_hartid; // saved kernel tp
     p->copy_trapframe->ra = p->trapframe->ra;
     p->copy_trapframe->sp = p->trapframe->sp;
     p->copy_trapframe->gp = p->trapframe->gp;

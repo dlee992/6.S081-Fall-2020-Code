@@ -166,11 +166,11 @@ uint64 sys_sigreturn(void) {
   p->reentrant = 0;
 
   // copy back the user registers in normal code executing
-  p->trapframe->kernel_satp = p->copy_trapframe->kernel_satp;   // kernel page table
-  p->trapframe->kernel_sp = p->copy_trapframe->kernel_sp;     // top of process's kernel stack
-  p->trapframe->kernel_trap = p->copy_trapframe->kernel_trap;   // usertrap()
+  // p->trapframe->kernel_satp = p->copy_trapframe->kernel_satp;   // kernel page table
+  // p->trapframe->kernel_sp = p->copy_trapframe->kernel_sp;     // top of process's kernel stack
+  // p->trapframe->kernel_trap = p->copy_trapframe->kernel_trap;   // usertrap()
   p->trapframe->epc = p->copy_trapframe->epc;           // saved user program counter
-  p->trapframe->kernel_hartid = p->copy_trapframe->kernel_hartid; // saved kernel tp
+  // p->trapframe->kernel_hartid = p->copy_trapframe->kernel_hartid; // saved kernel tp
   p->trapframe->ra = p->copy_trapframe->ra;
   p->trapframe->sp = p->copy_trapframe->sp;
   p->trapframe->gp = p->copy_trapframe->gp;

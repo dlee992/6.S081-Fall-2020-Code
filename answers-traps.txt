@@ -1,0 +1,5 @@
+1. a0,a1,... will contain function arguments, a2 will hold 13 in main's call to printf.
+2. abc
+3. abc
+4. abc
+5. abc
