@@ -29,6 +29,26 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+// for lazy alloc, not for copy-on-write fork
+int lazyalloc(uint64 notmapped) {
+  // printf("lazy alloc vm = %p\n", notmapped);
+  struct proc *p = myproc();
+  pagetable_t pagetable = p->pagetable;
+  uint64 mem = (uint64) kalloc();
+  uint64 sp = p->trapframe->sp;
+  if ((notmapped > p->sz) || (notmapped < sp) || (mem == 0)) {
+    return -1;
+  }
+  else {
+    memset((void *)mem, 0, PGSIZE);
+    if (mappages(pagetable, notmapped, PGSIZE, mem, PTE_W|PTE_R|PTE_X|PTE_U) != 0) {
+      kfree((void *)mem);
+      return -1;
+    }
+  }
+  return 0;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -64,25 +84,35 @@ usertrap(void)
     // so don't enable until done with those registers.
     intr_on();
 
-    syscall();
-  } else if((which_dev = devintr()) != 0){
-    // ok
-  } else if (r_scause() == 15) {
-    uint64 va = r_stval();
-    printf("page fault %p\n", va);
-    uint64 ka = (uint64) kalloc();
-    if (ka == 0) {
-      p->killed = 1;
-    } else {
-      memset((void *)ka, 0, PGSIZE);
-      va = PGROUNDDOWN(va);
-      if (mappages(p->pagetable, va, PGSIZE, ka, PTE_W|PTE_U|PTE_R) != 0) {
-        kfree((void *)ka);
-        p->killed = 1;
-      }
+    //add logic for read/write/pipe
+    int num = p->trapframe->a7;
+    int valid = 0;
+    uint64 va;
+    if (num == 16 || num == 4 || num == 5) {
+      // printf("ENTER HEHRE\n");
+      if (num == 4)
+        argaddr(0, &va);
+      else 
+        argaddr(1, &va);
+      if (walkaddr(p->pagetable, va) == 0) 
+        if (lazyalloc(PGROUNDDOWN(va)) == -1) {
+          valid = -1;
+        }
     }
 
-  
+    if (valid == -1) {
+      p->trapframe->a0 = -1;
+    }
+    else
+      syscall();
+
+  } else if((which_dev = devintr()) != 0){
+    // ok
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    if (lazyalloc(PGROUNDDOWN(r_stval())) == -1) {
+      p->killed = 1;
+      exit(-1);
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
