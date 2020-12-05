@@ -8,6 +8,7 @@
 #include "elf.h"
 
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
+extern void vmcopy(pagetable_t pagetable1, pagetable_t pagetable2);
 
 int
 exec(char *path, char **argv)
@@ -62,7 +63,7 @@ exec(char *path, char **argv)
   ip = 0;
 
   p = myproc();
-  uint64 oldsz = p->sz;
+  uint64 oldsz = p->sz; // oldsz is the size of program code and data, no need to map in p->kpagetable.
 
   // Allocate two pages at the next page boundary.
   // Use the second as the user stack.
@@ -117,6 +118,8 @@ exec(char *path, char **argv)
   proc_freepagetable(oldpagetable, oldsz);
 
   vmprint(pagetable);
+  uvmalloc(p->kpagetable, oldsz, sz);
+  vmcopy(p->pagetable, p->kpagetable);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

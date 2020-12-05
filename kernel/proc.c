@@ -21,6 +21,11 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+extern pagetable_t kernel_pagetable;
+extern pagetable_t pkvminit();
+extern void vmcopy(pagetable_t pagetable1, pagetable_t pagetable2);
+void proc_freekpagetable(pagetable_t kpagetable, uint64 sz);
+
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -121,6 +126,9 @@ found:
     return 0;
   }
 
+  p->kpagetable = pkvminit();
+  vmcopy(kernel_pagetable, p->kpagetable);
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -142,6 +150,9 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  if (p->kpagetable) 
+    proc_freekpagetable(p->kpagetable, p->sz);
+  p->kpagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -195,6 +206,16 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
+void 
+proc_freekpagetable(pagetable_t kpagetable, uint64 sz) {
+  uvmunmap(kpagetable, UART0, 1, 0);
+  uvmunmap(kpagetable, VIRTIO0, 1, 0);
+  uvmunmap(kpagetable, CLINT, 0x10, 0);
+  uvmunmap(kpagetable, PLIC, 0x400, 0);
+  uvmunmap(kpagetable, KERNBASE, (PHYSTOP - KERNBASE) / PGSIZE, 0);
+  uvmunmap(kpagetable, TRAMPOLINE, 1, 0);
+}
+
 // a user program that calls exec("/init")
 // od -t xC initcode
 uchar initcode[] = {
@@ -230,6 +251,9 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  uvmalloc(p->kpagetable, 0, p->sz);
+  vmcopy(p->pagetable, p->kpagetable);
+
   release(&p->lock);
 }
 
@@ -243,10 +267,22 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if (sz + n >= CLINT) {
+      return -1;
+    } else {
+      if (uvmalloc(p->kpagetable, sz, sz + n) == 0) {
+        return -1;
+      }
+    }
+
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    vmcopy(p->pagetable, p->kpagetable);
+
   } else if(n < 0){
+    if (sz <= PLIC) 
+      uvmdealloc(p->kpagetable, sz, sz + n);
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
   p->sz = sz;
@@ -274,6 +310,8 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+  uvmalloc(np->kpagetable, 0, p->sz);
+  vmcopy(np->pagetable, np->kpagetable);
 
   np->parent = p;
 
@@ -472,6 +510,9 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -485,6 +526,8 @@ scheduler(void)
     }
 #if !defined (LAB_FS)
     if(found == 0) {
+      w_satp(MAKE_SATP(kernel_pagetable));
+      sfence_vma();
       intr_on();
       asm volatile("wfi");
     }

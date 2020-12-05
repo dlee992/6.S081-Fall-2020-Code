@@ -15,6 +15,10 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern int copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
+extern int copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
+void pkvmmap(uint64 va, uint64 pa, uint64 sz, int perm, pagetable_t kpagetable);
+
 /*
  * create a direct-map page table for the kernel.
  */
@@ -45,6 +49,23 @@ kvminit()
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  // vmprint(kernel_pagetable);
+}
+
+pagetable_t pkvminit() {
+  pagetable_t kpagetable = (pagetable_t) kalloc();
+  memset(kpagetable, 0 ,PGSIZE);
+
+  pkvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W, kpagetable);
+  pkvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W, kpagetable);
+  pkvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W, kpagetable);
+  pkvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W, kpagetable);
+  pkvmmap(KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X, kpagetable);
+  pkvmmap((uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W, kpagetable);
+  pkvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X, kpagetable);
+
+  return kpagetable;
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -119,6 +140,11 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 {
   if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
+}
+
+void pkvmmap(uint64 va, uint64 pa, uint64 sz, int perm, pagetable_t kpagetable) {
+  if (mappages(kpagetable, va, sz, pa, perm) != 0) 
+    panic("pkvmmap");
 }
 
 // translate a kernel virtual address to
@@ -379,23 +405,24 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  return copyin_new(pagetable, dst, srcva, len);
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  return 0;
+  //   len -= n;
+  //   dst += n;
+  //   srcva = va0 + PGSIZE;
+  // }
+  // return 0;
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -405,40 +432,41 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
+  return copyinstr_new(pagetable, dst, srcva, max);
+  // uint64 n, va0, pa0;
+  // int got_null = 0;
 
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
+  // while(got_null == 0 && max > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > max)
+  //     n = max;
 
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
+  //   char *p = (char *) (pa0 + (srcva - va0));
+  //   while(n > 0){
+  //     if(*p == '\0'){
+  //       *dst = '\0';
+  //       got_null = 1;
+  //       break;
+  //     } else {
+  //       *dst = *p;
+  //     }
+  //     --n;
+  //     --max;
+  //     p++;
+  //     dst++;
+  //   }
 
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
+  //   srcva = va0 + PGSIZE;
+  // }
+  // if(got_null){
+  //   return 0;
+  // } else {
+  //   return -1;
+  // }
 }
 
 void _vmprint(pagetable_t pagetable, int depth)
@@ -464,4 +492,40 @@ void _vmprint(pagetable_t pagetable, int depth)
 
 void vmprint(pagetable_t pagetable) {
   _vmprint(pagetable, 1);
+}
+
+#define PAGETABLE_LIMIT 512
+// copy from 1 to 2
+void vmcopy(pagetable_t pagetable1, pagetable_t pagetable2) {
+
+  int fromzero = (pagetable1 == kernel_pagetable) ? 0 : 1;
+
+  for(int i = 0; i < PAGETABLE_LIMIT; i++)
+  {
+    pagetable_t PTE_11 = (pagetable_t)PTE2PA(pagetable1[i]);
+    pagetable_t PTE_21 = (pagetable_t)PTE2PA(pagetable2[i]);
+    if(pagetable1[i] & PTE_V) {
+      for(int j = 0; j < PAGETABLE_LIMIT; j++)
+      {
+        pagetable_t PTE_12 = (pagetable_t)PTE2PA(PTE_11[j]);
+        pagetable_t PTE_22 = (pagetable_t)PTE2PA(PTE_21[j]);
+        if(PTE_11[j] & PTE_V) {
+          for(int k = 0; k < PAGETABLE_LIMIT; k++)
+          {
+            pagetable_t PTE_13 = (pagetable_t)PTE2PA(PTE_12[k]);
+            pagetable_t PTE_23 = (pagetable_t)PTE2PA(PTE_22[k]);
+
+            if((PTE_12[k] & PTE_V) && ((PTE_12[k] != PTE_22[k]) || (PTE_13 != PTE_23))){
+              PTE_22[k] = PTE_12[k] & 0xffffffffffffffef; // clear PTE_U
+              // PTE_23 = PTE_13;
+            } 
+          } 
+        } else if (fromzero) {
+            return;
+        }
+      } 
+    } else if (fromzero) {
+        return;
+    }
+  }
 }
